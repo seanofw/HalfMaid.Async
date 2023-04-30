@@ -43,6 +43,16 @@ namespace HalfMaid.Async
 		}
 
 		/// <summary>
+		/// Enqueue work to perform on some future frame.
+		/// </summary>
+		/// <param name="action">The action to enqueue, an async method that returns a GameTask.</param>
+		/// <param name="frames">How far in the future to perform it.</param>
+		public void EnqueueFuture(Func<GameTask> action, int frames)
+		{
+			EnqueueFuture(() => action(), frames);
+		}
+
+		/// <summary>
 		/// Wait until the next frame before continuing.  This constructs a "yield awaitable"
 		/// for one frame in the future and returns it.
 		/// </summary>
