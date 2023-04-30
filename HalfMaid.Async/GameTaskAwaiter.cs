@@ -13,17 +13,17 @@ namespace HalfMaid.Async
 	public readonly struct GameTaskAwaiter : ICriticalNotifyCompletion
 	{
 		/// <summary>
-		/// The task this awaiter is associated with.
+		/// The task builder this awaiter is associated with.
 		/// </summary>
-		public readonly GameTask Task;
+		public readonly GameTaskBuilder Builder;
 
 		/// <summary>
 		/// Construct a new awaiter for the given GameTask.
 		/// </summary>
-		/// <param name="task">The task that this can register continuations with.</param>
+		/// <param name="builder">The task builder that this can register continuations with.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public GameTaskAwaiter(GameTask task)
-			=> Task = task;
+		public GameTaskAwaiter(GameTaskBuilder builder)
+			=> Builder = builder;
 
 		/// <summary>
 		/// Whether the task associated with this awaiter has completed or not.
@@ -31,7 +31,7 @@ namespace HalfMaid.Async
 		public bool IsCompleted
 		{
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
-			get => Task.IsCompleted;
+			get => Builder.Status != GameTaskStatus.InProgress;
 		}
 
 		/// <summary>
@@ -43,7 +43,7 @@ namespace HalfMaid.Async
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void GetResult()
 		{
-			if (Task.Status != GameTaskStatus.Success)
+			if (Builder.Status != GameTaskStatus.Success)
 				throw new InvalidOperationException("Task has no result because it is either in progress or raised an exception.");
 		}
 
@@ -53,7 +53,7 @@ namespace HalfMaid.Async
 		/// <param name="continuation">The continuation to perform after the task completes.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void OnCompleted(Action continuation)
-			=> Task.SetContinuation(continuation);
+			=> Builder.SetContinuation(continuation);
 
 		/// <summary>
 		/// Register a continuation with the task that the task should invoke after the task completes.
@@ -61,7 +61,7 @@ namespace HalfMaid.Async
 		/// <param name="continuation">The continuation to perform after the task completes.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void UnsafeOnCompleted(Action continuation)
-			=> Task.SetContinuation(continuation);
+			=> Builder.SetContinuation(continuation);
 	}
 
 	/// <summary>
@@ -74,17 +74,17 @@ namespace HalfMaid.Async
 	public readonly struct GameTaskAwaiter<T> : ICriticalNotifyCompletion
 	{
 		/// <summary>
-		/// The task this awaiter is associated with.
+		/// The task builder this awaiter is associated with.
 		/// </summary>
-		public readonly GameTask<T> Task;
+		public readonly GameTaskBuilder<T> Builder;
 
 		/// <summary>
 		/// Construct a new awaiter for the given GameTask.
 		/// </summary>
-		/// <param name="task">The task that this can register continuations with.</param>
+		/// <param name="builder">The task builder that this can register continuations with.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public GameTaskAwaiter(GameTask<T> task)
-			=> Task = task;
+		public GameTaskAwaiter(GameTaskBuilder<T> builder)
+			=> Builder = builder;
 
 		/// <summary>
 		/// Whether the task associated with this awaiter has completed or not.
@@ -92,7 +92,7 @@ namespace HalfMaid.Async
 		public bool IsCompleted
 		{
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
-			get => Task.IsCompleted;
+			get => Builder.Status != GameTaskStatus.InProgress;
 		}
 
 		/// <summary>
@@ -101,7 +101,7 @@ namespace HalfMaid.Async
 		/// <exception cref="InvalidOperationException">Thrown if the task did not (yet)
 		/// complete successfully.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public T GetResult() => Task.Status == GameTaskStatus.Success ? Task.Result
+		public T GetResult() => Builder.Status == GameTaskStatus.Success ? Builder.Result
 			: throw new InvalidOperationException("Task has no result because it is either in progress or raised an exception.");
 
 		/// <summary>
@@ -110,7 +110,7 @@ namespace HalfMaid.Async
 		/// <param name="continuation">The continuation to perform after the task completes.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void OnCompleted(Action continuation)
-			=> Task.SetContinuation(continuation);
+			=> Builder.SetContinuation(continuation);
 
 		/// <summary>
 		/// Register a continuation with the task that the task should invoke after the task completes.
@@ -118,6 +118,6 @@ namespace HalfMaid.Async
 		/// <param name="continuation">The continuation to perform after the task completes.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void UnsafeOnCompleted(Action continuation)
-			=> Task.SetContinuation(continuation);
+			=> Builder.SetContinuation(continuation);
 	}
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace HalfMaid.Async.Example
 {
@@ -28,6 +29,12 @@ namespace HalfMaid.Async.Example
 			Console.WriteLine($"Actor {Id}: Shallow start");
 			await Deep();
 			amount++;
+			await RunTask(async () =>
+			{
+				Console.WriteLine($"Actor {Id}: Before Task.Delay");
+				await Task.Delay(1000);
+				Console.WriteLine($"Actor {Id}: After Task.Delay");
+			});
 			Console.WriteLine($"Actor {Id}: Shallow middle");
 			await Deep();
 			amount++;

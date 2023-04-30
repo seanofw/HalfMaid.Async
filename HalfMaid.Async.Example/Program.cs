@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace HalfMaid.Async.Example
 {
@@ -11,14 +12,19 @@ namespace HalfMaid.Async.Example
 			GameTaskRunner runner = AsyncGameObjectBase.Runner = new GameTaskRunner();
 
 			ExampleActor actor = new ExampleActor();
-
 			runner.StartImmediately(actor.Main);
 
 			while (runner.TaskCount != 0)
 			{
-				Console.WriteLine("Continuing");
+				Thread.Sleep(100);
+				Console.WriteLine($"Frame {runner.Frame}");
 				runner.RunNextFrame();
-				Console.WriteLine("Continued");
+
+				if (runner.Frame == 10)
+				{
+					ExampleActor actor2 = new ExampleActor();
+					runner.StartImmediately(actor2.Main);
+				}
 			}
 
 			Console.WriteLine("End");

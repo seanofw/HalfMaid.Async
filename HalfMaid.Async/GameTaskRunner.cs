@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace HalfMaid.Async
 {
@@ -14,7 +15,13 @@ namespace HalfMaid.Async
 		/// <summary>
 		/// The current frame, from the runner's perspective.
 		/// </summary>
+		public long Frame => _frame;
 		private long _frame = 0;
+
+		/// <summary>
+		/// The number of active external tasks.
+		/// </summary>
+		private long _externalTasks = 0;
 
 		/// <summary>
 		/// Future pending work, stored as a priority queue for efficient access,
@@ -86,7 +93,7 @@ namespace HalfMaid.Async
 			{
 				lock (_yieldedContinuations)
 				{
-					return _yieldedContinuations.Count;
+					return _yieldedContinuations.Count + (int)Interlocked.Read(ref _externalTasks);
 				}
 			}
 		}
@@ -103,7 +110,8 @@ namespace HalfMaid.Async
 				Action? continuation;
 				lock (_yieldedContinuations)
 				{
-					if (!_yieldedContinuations.TryDequeue(out continuation, out long frame))
+					if (!_yieldedContinuations.TryDequeue(out continuation, out long frame)
+						&& Interlocked.Read(ref _externalTasks) == 0)
 						break;
 					Interlocked.Exchange(ref _frame, frame);
 				}
@@ -133,6 +141,29 @@ namespace HalfMaid.Async
 
 				continuation!();
 			}
+		}
+
+		/// <summary>
+		/// Run an external task that performs I/O or similar as a GameTask.  The external
+		/// task will be run on the thread pool.  When the external task completes, the
+		/// calling GameTask will continue on the next frame following its completion.
+		/// This is typically used to perform I/O easily, but without blocking the main
+		/// game loop.
+		/// </summary>
+		/// <param name="task">The task to run.</param>
+		public ExternalTaskAwaitable RunTask(Func<Task> task)
+		{
+			Interlocked.Increment(ref _externalTasks);
+
+			ExternalTaskAwaitable awaitable = new ExternalTaskAwaitable(this);
+
+			Task.Run(async () => {
+				await task();
+				awaitable.Trigger();
+				Interlocked.Decrement(ref _externalTasks);
+			});
+
+			return awaitable;
 		}
 	}
 }
