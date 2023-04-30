@@ -351,9 +351,9 @@ public abstract class AsyncGameObjectBase
 
 Sometimes you may want to use a "normal" `Task` object within the scope of a `GameTask`.  For example, you may need to perform slow file I/O, or network I/O, and you would still like your game loop to run.  The `GameTaskRunner` provides a special method, `RunTask()`, that allows `Task` objects to be integrated within a `GameTask`'s execution.
 
-Recall above that `GameTask`s are run synchronously until each reaches `await Next()` or `await Delay()`:  This behavior is very different from the normal usage of `await`.  Therefore, `RunTask()` is needed to "connect" `Task` objects, which have an inherent notion of threading and asynchrony, to `GameTask`s, which are state machines in disguise.
+Recall above that `GameTask`s are run synchronously until each reaches `await Next()` or `await Delay()`:  This behavior is very different from the normal usage of `await`.  Therefore, `RunTask()` is needed to "connect" `Task` objects, which have an inherent notion of threading and asynchronicity, to `GameTask`s, which are state machines in disguise.
 
-It is not hard to embed a `Task` inside a `GameTask`:  Simply `await RunTask(task)`, as in the example below, similarly to how you might call `Task.Run(task)`:
+It is not hard to embed a `Task` inside a `GameTask`:  Simply `await RunTask(task)` inside your `GameTask` method, as in the example below, similarly to how you might call `Task.Run(task)`:
 ```cs
 public async GameTask DoSomething()
 {
@@ -423,7 +423,7 @@ This is a convenience class.  You do not need to inherit from it, but doing so c
 
 ## Contributors &amp; Thanks
 
-This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of really poor documentation on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out a way to make it work in April 2023.
+This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of [really poor documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-7.0/task-types#builder-type) on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out a way to make it work in April 2023.
 
 I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work plumbing the depths of C# `async`/`await`.  And old versions of .NET Reflector really helped to untangle what was going on inside the generated code.
 
