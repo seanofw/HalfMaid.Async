@@ -1,11 +1,14 @@
 # HalfMaid.Async
 
 Copyright &copy; 2023 by Sean Werkema
+
 Licensed under the [MIT open-source license](https://opensource.org/license/mit/)
 
 ## Overview
 
-This repository contains the HalfMaidGames Async library, which is designed to solve a common problem in video-game programming in C#:  The difficulty of building state machines.  Instead of using `switch`-statements or hacking `IEnumerable` generators for your state machines, you can use nice, clean `async`/`await`-based programming for each actor in your video game, and it scales very well to complex use cases.
+This repository contains the HalfMaidGames Async library, which is designed to solve a common problem in video-game programming in C#:  The difficulty of building video-game state machines.
+
+Instead of using `switch`-statements or hacking `IEnumerable` generators for your state machines, you can use nice, clean `async`/`await`-based programming for each actor in your game, and it scales very well to complex use cases.
 
 ## Installation
 
@@ -14,6 +17,8 @@ You can install the latest [HalfMaidGames.Async library]() as a Nuget package.
 The package is built for .NET Standard 2.1 for maximum backward compatibility.  It should run equally well under .NET Framework 4.x, .NET Core 2.2+, and .NET 5+.
 
 ## Example &amp; Rationale
+
+### The Problem
 
 Consider an enemy character that moves back and forth every ten seconds.  In a state-machine-based model, you might write code that's something like this:
 
@@ -60,6 +65,8 @@ public class BackAndForthEnemy
 ```
 Every 1/60th of a second, we perform a little bit of the action — but it's completely tangled.  The logic and control flow is inside-out, because you need to return to the main game loop after every update.
 
+### The Ideal
+
 What you really *want* to be able to write is simple, procedural code like this:
 ```cs
 public class BackAndForthEnemy
@@ -90,6 +97,8 @@ public class BackAndForthEnemy
 	}
 }
 ```
+
+### The Solution
 
 With the HalfMaidGames Async library, you can use C#'s `async`/`await` to write code that looks almost exactly like the procedural example above:
 ```cs
@@ -122,6 +131,8 @@ public class BackAndForthEnemy : AsyncGameObjectBase
 }
 ```
 The Async library "magically" interrupts the methods at each call to `Next()`, and it resumes at that exact point in the next frame, so that the code for your actors can be written as though each one is just logical, procedural code.
+
+### Running it
 
 How do you use your new `async`-based enemy?  The Async library contains a `GameTaskRunner` that is responsible for _running_ these "game tasks."  Each frame, the runner makes each "game task" run forward until the task calls `Next()` or exits.
 
@@ -162,6 +173,55 @@ Any method that returns a `GameTask` can be run by the runner.  However, typical
 2.  Use `await` inside them when invoking other `GameTask` methods.
 3.  You can `await Next()` or `await Delay()` as deeply in the call chain as you want, as long as all callers `await` your method as well.
 4.  If your method needs to return a value, return `GameTask<T>`.
+
+#### Detailed Samples
+
+Declaring methods that either use `Next()` or `Delay()`, or that call methods that use `Next()` or `Delay()`:
+```cs
+public async GameTask MyMethod()
+{
+	...
+	await runner.Next();
+	...
+}
+```
+Declaring `GameTask` methods that return data:
+```cs
+int amount = await MyMethod();
+
+...
+
+public async GameTask<int> MyMethod()
+{
+	...
+	await runner.Next();
+	...
+	return 5;
+}
+```
+Waiting until the next frame to perform actions slowly:
+```cs
+...do something...
+
+await runner.Next();
+
+...do something...
+
+await runner.Next();
+
+...do something...
+```
+Waiting for many frames to perform actions even slower:
+```cs
+...do something...
+
+await runner.Delay(10);
+
+...do something...
+```
+(The parameter to the `Delay()` method is the number of *frames* to wait, not milliseconds or seconds.  And the duration of a frame depends solely on how many frames you choose to execute per second — on how often you call `runner.RunNextFrame()`.)
+
+#### Complete Example
 
 Here's a simple example showing all of these pieces together to build an enemy that "thinks" for a few seconds and then moves in a random direction for a few seconds.  If this were built as a traditional state machine, the code would be much more complex, and much harder to read and to modify, but as `async`-style code, it's simple and straightforward:
 
@@ -316,7 +376,7 @@ Inside the body of the task passed to `RunTask()`, you may use any normal `Task`
 
 There are relatively few public APIs, as the library mostly relies on standard `async`/`await` mechanics to function.  But here are the ones that are exposed:
 
-**`GameTask`**
+### GameTask
 
 This is a `struct` that represents an active task for a function that otherwise would return `void`.  It may be executed via normal `await`/`async`.
 
@@ -329,13 +389,13 @@ This is represented as a `struct` to keep heap overhead as low as possible.  The
 - **Property `IsCompleted`**: True if this task has ended (via normal completion or an exception), false if it is still `InProgress`.
 - **Method `GetAwaiter()`**: Returns an awaiter-compatible object that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
 
-**`GameTask<T>`**
+### GameTask<T>
 
 This is a similar `struct` to `GameTask`, and most of the above description applies.  This contains conversion-operator methods to and from `GameTask` so that it appears to support "inheritance".  This also has the following property:
 
 - **Property `T Result`**: The result (return value) of this task after it has successfully completed.  Will be `default(T)` until the task successfully completes.
 
-**`GameTaskRunner`**
+### GameTaskRunner
 
 This manages the active state of a group of tasks, and can run those tasks forward to a specific point in time, either one frame, several frames, or all frames.
 
@@ -352,7 +412,7 @@ This class is thread-safe:  Any method or property below may be invoked from any
 - **Method `RunNextFrame()`** - Run exactly one subsequent frame's worth of execution for any registered tasks.  As soon as all tasks have either completed or have invoked `Next()` or `Delay()` to wait for a subsequent frame, this method returns.
 - **Method `RunTask(Func<Task> task)`** - Allow a traditional I/O task to be executed and managed by the task runner.  The `Task` will be executed by the thread pool.
 
-**`AsyncGameObjectBase`**
+### AsyncGameObjectBase
 
 This is a convenience class.  You do not need to inherit from it, but doing so can simplify calling methods like `GameTaskRunner.Next()` in your own code.
 
@@ -365,7 +425,7 @@ This is a convenience class.  You do not need to inherit from it, but doing so c
 
 This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of really poor documentation on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out a way to make it work in April 2023.
 
-I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work into the depths of C# `async`/`await`.  And old versions of .NET Reflector really helped to untangle what was going on inside the generated code.
+I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work plumbing the depths of C# `async`/`await`.  And old versions of .NET Reflector really helped to untangle what was going on inside the generated code.
 
 As implemented, this seems to cover every major use case I can think of, and I can't really think of features this might need that it doesn't already have.  It has no bugs that I know of, but if you find one, feel free to report one.
 
