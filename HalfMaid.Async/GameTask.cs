@@ -32,14 +32,6 @@ namespace HalfMaid.Async
 			=> Builder = builder;
 
 		/// <summary>
-		/// After this task completes, then immediately initiate the given subsequent task.
-		/// </summary>
-		/// <param name="task">The task to perform after this one.</param>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void Then(Func<GameTask> task)
-			=> Builder.SetContinuation(() => task());
-
-		/// <summary>
 		/// Whether this task has completed or is still in progress.  This is required
 		/// by the C# compiler.
 		/// </summary>
@@ -113,14 +105,6 @@ namespace HalfMaid.Async
 		/// <param name="task">The GameTask{T} to demote to a GameTask.</param>
 		public static implicit operator GameTask(GameTask<T> task)
 			=> new GameTask(task.Builder);
-
-		/// <summary>
-		/// After this task completes, then immediately initiate the given subsequent task.
-		/// </summary>
-		/// <param name="task">The task to perform after this one.</param>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void Then(Func<GameTask> task)
-			=> Builder.SetContinuation(() => task());
 
 		/// <summary>
 		/// Whether this task has completed or is still in progress.  This is required

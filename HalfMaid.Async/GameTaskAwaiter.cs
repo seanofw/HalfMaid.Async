@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace HalfMaid.Async
@@ -41,10 +42,18 @@ namespace HalfMaid.Async
 		/// <exception cref="InvalidOperationException">Thrown if the task did not (yet)
 		/// complete successfully.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
 		public void GetResult()
 		{
-			if (Builder.Status != GameTaskStatus.Success)
-				throw new InvalidOperationException("Task has no result because it is either in progress or raised an exception.");
+			if (Builder.Status == GameTaskStatus.Success)
+				return;   // Hot path first.
+			else if (Builder.Status == GameTaskStatus.Failed)
+				Builder.ExceptionDispatchInfo!.Throw();
+			else
+				throw new InvalidOperationException("Task has no result because it is still in progress.");
 		}
 
 		/// <summary>
@@ -101,8 +110,21 @@ namespace HalfMaid.Async
 		/// <exception cref="InvalidOperationException">Thrown if the task did not (yet)
 		/// complete successfully.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public T GetResult() => Builder.Status == GameTaskStatus.Success ? Builder.Result
-			: throw new InvalidOperationException("Task has no result because it is either in progress or raised an exception.");
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
+		public T GetResult()
+		{
+			if (Builder.Status == GameTaskStatus.Success)
+				return Builder.Result;   // Hot path first.
+			else if (Builder.Status == GameTaskStatus.Failed)
+			{
+				Builder.ExceptionDispatchInfo!.Throw();
+				return default!;	// Never hit, but required by the compiler.
+			}
+			else throw new InvalidOperationException("Task has no result because it is still in progress.");
+		}
 
 		/// <summary>
 		/// Register a continuation with the task that the task should invoke after the task completes.

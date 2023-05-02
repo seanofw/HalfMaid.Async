@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 
 namespace HalfMaid.Async
 {
@@ -38,6 +41,17 @@ namespace HalfMaid.Async
 		public Exception? Exception { get; private set; }
 
 		/// <summary>
+		/// The dispatch information from the exception thrown by this task.
+		/// </summary>
+		public ExceptionDispatchInfo? ExceptionDispatchInfo { get; private set; }
+
+		/// <summary>
+		/// The captured execution context.  Assigned when the task is interrupted, and used
+		/// to restore the execution context back to "normal" when the task is resumed.
+		/// </summary>
+		internal ExecutionContext? ExecutionContext { get; set; }
+
+		/// <summary>
 		/// A continuation to invoke to resume this task, if it is interrupted.
 		/// </summary>
 		private Action? _continuation;
@@ -47,8 +61,13 @@ namespace HalfMaid.Async
 		/// is a struct, this effectively just returns a single pointer.
 		/// </summary>
 		/// <returns>The new GameTaskBuilder instance.</returns>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static GameTaskBuilder Create() => new GameTaskBuilder();
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public static GameTaskBuilder Create()
+		{
+			GameTaskBuilder builder = new GameTaskBuilder();
+			builder.ExecutionContext = ExecutionContext.Capture();
+			return builder;
+		}
 
 		/// <summary>
 		/// Start the state machine of the task at its beginning.  Does nothing
@@ -79,13 +98,17 @@ namespace HalfMaid.Async
 		/// <exception cref="InvalidOperationException">Thrown if the task has
 		/// already completed.</exception>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
 		public void SetException(Exception exception)
 		{
 			if (Status != GameTaskStatus.InProgress)
 				throw new InvalidOperationException("Cannot fail an already-finished task.");
 
-			(Status, Exception) = (GameTaskStatus.Failed, exception);
-			_continuation?.Invoke();
+			(Status, Exception, ExceptionDispatchInfo) = (GameTaskStatus.Failed, exception, ExceptionDispatchInfo.Capture(exception));
+			Continue();
 		}
 
 		/// <summary>
@@ -94,13 +117,48 @@ namespace HalfMaid.Async
 		/// </summary>
 		/// <exception cref="InvalidOperationException">Thrown if the task has
 		/// already completed.</exception>
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
 		public void SetResult()
 		{
 			if (Status != GameTaskStatus.InProgress)
 				throw new InvalidOperationException("Cannot complete an already-finished task.");
 
-			(Status, Exception) = (GameTaskStatus.Success, null);
-			_continuation?.Invoke();
+			Status = GameTaskStatus.Success;
+			Continue();
+		}
+
+		/// <summary>
+		/// Use the current continuation to continute the task in the correct execution context.
+		/// </summary>
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
+		internal void Continue()
+		{
+			if (_continuation == null)
+				return;
+
+			if (ExecutionContext != null)
+				ExecutionContext.Run(ExecutionContext, ExecutionContextRunner, _continuation);
+			else
+				_continuation();
+		}
+
+		/// <summary>
+		/// Run the given provided callback inside a custom execution context.
+		/// </summary>
+		/// <param name="obj">The callback to invoke, which must be an Action.</param>
+#if NET6_0_OR_GREATER
+		[StackTraceHidden]
+#endif
+		[DebuggerHidden]
+		private static void ExecutionContextRunner(object? obj)
+		{
+			((Action)obj!)();
 		}
 
 		/// <summary>
@@ -113,7 +171,8 @@ namespace HalfMaid.Async
 		{
 			if (Status != GameTaskStatus.InProgress)
 			{
-				continuation?.Invoke();
+				_continuation = continuation;
+				Continue();
 				return;
 			}
 

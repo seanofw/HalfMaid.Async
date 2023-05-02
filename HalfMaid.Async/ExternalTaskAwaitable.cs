@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System;
+using System.Threading;
 
 namespace HalfMaid.Async
 {
@@ -17,7 +18,12 @@ namespace HalfMaid.Async
 		/// <summary>
 		/// The continuation that will eventually be triggered by this awaitable, if any.
 		/// </summary>
-		public Action? Continuation { get; private set; }
+		private Action? _continuation;
+
+		/// <summary>
+		/// The execution context in which to continue the current task.
+		/// </summary>
+		private ExecutionContext? _executionContext;
 
 		/// <summary>
 		/// Answer whether this awaitable has been completed yet.  By definition, if it
@@ -33,8 +39,11 @@ namespace HalfMaid.Async
 		/// <param name="frameCount">The number of frames that should elapse before this
 		/// awaitable should continue.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public ExternalTaskAwaitable(GameTaskRunner runner)
-			=> Runner = runner;
+		public ExternalTaskAwaitable(GameTaskRunner runner, ExecutionContext? context)
+		{
+			Runner = runner;
+			_executionContext = context;
+		}
 
 		/// <summary>
 		/// Retrieve the awaiter that can actually enqueue the wait continuation.  This
@@ -52,12 +61,12 @@ namespace HalfMaid.Async
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void OnCompleted(Action continuation)
 		{
-			if (Continuation == null)
-				Continuation = continuation;
+			if (_continuation == null)
+				_continuation = continuation;
 			else
 			{
-				Action previousContinuation = Continuation;
-				Continuation = () =>
+				Action previousContinuation = _continuation;
+				_continuation = () =>
 				{
 					previousContinuation();
 					continuation();
@@ -68,17 +77,17 @@ namespace HalfMaid.Async
 		/// <summary>
 		/// Trigger this awaitable's continuation to start execution on the next frame.
 		/// </summary>
-		public void Trigger()
+		internal void Trigger()
 		{
 			IsCompleted = true;
 
-			if (Continuation != null)
-				Runner.EnqueueFuture(Continuation, 0);
+			if (_continuation != null)
+				Runner.EnqueueFuture(_continuation, _executionContext, 0);
 		}
 
 		/// <summary>
 		/// Retrieve the result of having executed this.  This is invoked by generated
-		/// code from the C# compiler as well.
+		/// code from the C# compiler.
 		/// </summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void GetResult()

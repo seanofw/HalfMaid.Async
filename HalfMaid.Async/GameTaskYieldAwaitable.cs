@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System;
+using System.Threading;
 
 namespace HalfMaid.Async
 {
@@ -20,6 +21,12 @@ namespace HalfMaid.Async
 		public readonly int FrameCount;
 
 		/// <summary>
+		/// The execution context in which the continuation should continue after this
+		/// yield has completed.
+		/// </summary>
+		private readonly ExecutionContext? _executionContext;
+
+		/// <summary>
 		/// Answer whether this awaitable has been completed yet.  By definition, if it
 		/// exists at all, it has not.
 		/// </summary>
@@ -37,10 +44,11 @@ namespace HalfMaid.Async
 		/// <param name="frameCount">The number of frames that should elapse before this
 		/// awaitable should continue.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public GameTaskYieldAwaitable(GameTaskRunner runner, int frameCount)
+		public GameTaskYieldAwaitable(GameTaskRunner runner, ExecutionContext? context, int frameCount)
 		{
 			Runner = runner;
 			FrameCount = frameCount;
+			_executionContext = context;
 		}
 
 		/// <summary>
@@ -58,7 +66,7 @@ namespace HalfMaid.Async
 		/// <param name="continuation">The continuation to register.</param>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void OnCompleted(Action continuation)
-			=> Runner.EnqueueFuture(continuation, FrameCount);
+			=> Runner.EnqueueFuture(continuation, _executionContext, FrameCount);
 
 		/// <summary>
 		/// Retrieve the result of having executed this.  This is invoked by generated

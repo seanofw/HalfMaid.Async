@@ -14,7 +14,7 @@ Instead of using `switch`-statements or hacking `IEnumerable` generators for you
 
 You can install the latest [HalfMaidGames.Async library]() as a Nuget package.
 
-The package is built for .NET Standard 2.1 for maximum backward compatibility.  It should run equally well under .NET Framework 4.x, .NET Core 2.2+, and .NET 5+.
+The package is multi-targeted for .NET Core 2.1, .NET Core 3.1, .NET 5.0, and .NET 6.0+ to provide maximum backward compatibility.  .NET Framework 4.x and earlier and .NET Core 1.x are not supported.
 
 ## Example &amp; Rationale
 
