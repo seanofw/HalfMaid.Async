@@ -23,16 +23,16 @@ namespace HalfMaid.Async.Example
 				Console.WriteLine($"Frame {runner.Frame}");
 				runner.RunNextFrame();
 
-				if (runner.Frame == 10)
+				if (runner.Frame == 5)
 				{
 					ExampleActor actor2 = new ExampleActor();
 					runner.StartImmediately(actor2.Main);
 				}
 
-				//if (runner.Frame == 20)
-				//{
-				//	runner.CancelAllTasks();
-				//}
+				if (runner.Frame == 10)
+				{
+					runner.CancelAllTasks();
+				}
 			}
 
 			Console.WriteLine("End");

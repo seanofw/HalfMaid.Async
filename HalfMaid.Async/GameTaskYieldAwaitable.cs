@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using System;
 using System.Threading;
+using System.Diagnostics;
 
 namespace HalfMaid.Async
 {
@@ -75,6 +76,11 @@ namespace HalfMaid.Async
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void GetResult()
 		{
+			if (Runner.Canceller != null)
+			{
+				Exception e = Runner.Canceller.Invoke();
+				throw e;
+			}
 		}
 	}
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HalfMaid.Async.Example
@@ -16,30 +17,45 @@ namespace HalfMaid.Async.Example
 
 		public async GameTask Main()
 		{
-			Console.WriteLine($"Actor {Id}: Run start");
-			int result1 = await Shallow();
-			Console.WriteLine($"Actor {Id}: Run middle");
-			int result2 = await Shallow();
-			Console.WriteLine($"Actor {Id}: Run end: {result1 + result2} == 6");
+			try
+			{
+				Console.WriteLine($"Actor {Id}: Run start");
+				int result1 = await Shallow();
+				Console.WriteLine($"Actor {Id}: Run middle");
+				int result2 = await Shallow();
+				Console.WriteLine($"Actor {Id}: Run end: {result1 + result2} == 6");
+			}
+			catch (TaskCanceledException)
+			{
+				Console.WriteLine($"Actor {Id}: Run cancelled");
+			}
 		}
 
 		private async GameTask<int> Shallow()
 		{
-			int amount = 1;
-			Console.WriteLine($"Actor {Id}: Shallow start");
-			await Deep();
-			amount++;
-			await RunTask(async () =>
+			try
 			{
-				Console.WriteLine($"Actor {Id}: Before Task.Delay");
-				await Task.Delay(1000);
-				Console.WriteLine($"Actor {Id}: After Task.Delay");
-			});
-			Console.WriteLine($"Actor {Id}: Shallow middle");
-			await Deep();
-			amount++;
-			Console.WriteLine($"Actor {Id}: Shallow end");
-			return amount;
+				int amount = 1;
+				Console.WriteLine($"Actor {Id}: Shallow start");
+				await Deep();
+				amount++;
+				await RunTask(async () =>
+				{
+					Console.WriteLine($"Actor {Id}: Before Task.Delay");
+					await Task.Delay(1000);
+					Console.WriteLine($"Actor {Id}: After Task.Delay");
+				});
+				Console.WriteLine($"Actor {Id}: Shallow middle");
+				await Deep();
+				amount++;
+				Console.WriteLine($"Actor {Id}: Shallow end");
+				return amount;
+			}
+			catch (TaskCanceledException)
+			{
+				Console.WriteLine($"Actor {Id}: Run cancelling");
+				throw;
+			}
 		}
 
 		private async GameTask Deep()

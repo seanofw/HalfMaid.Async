@@ -378,9 +378,9 @@ There are relatively few public APIs, as the library mostly relies on standard `
 
 ### GameTask
 
-This is a `struct` that represents an active task for a function that otherwise would return `void`.  It may be executed via normal `await`/`async`.
+This is a `class` that represents an active task for a function that otherwise would return `void`.  It may be executed via normal `await`/`async`.
 
-This is represented as a `struct` to keep heap overhead as low as possible.  The `struct` contains only a single reference to a `GameTaskBuilder` class, which contains the actual state for the task, typically about 4 pointers' worth of data.
+This is combined with its own builder type to keep heap overhead as low as possible.  It consists of about 5 or 6 pointers' worth of data.
 
 `GameTask` may be safely copied and moved around, since it is only a reference to a class and some additional methods.
 
@@ -389,9 +389,11 @@ This is represented as a `struct` to keep heap overhead as low as possible.  The
 - **Property `IsCompleted`**: True if this task has ended (via normal completion or an exception), false if it is still `InProgress`.
 - **Method `GetAwaiter()`**: Returns an awaiter-compatible object that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
 
+This class also has certain public methods that are required to implement the `AsyncMethodBuilder` pattern.  Even though they are declared `public`, they should only be invoked by the C# compiler itself.
+
 ### GameTask<T>
 
-This is a similar `struct` to `GameTask`, and most of the above description applies.  This contains conversion-operator methods to and from `GameTask` so that it appears to support "inheritance".  This also has the following property:
+This is a similar `class` to `GameTask`, and most of the above description applies.  This inherits from `GameTask`.  It also has the following property:
 
 - **Property `T Result`**: The result (return value) of this task after it has successfully completed.  Will be `default(T)` until the task successfully completes.
 

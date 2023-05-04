@@ -21,6 +21,21 @@ namespace HalfMaid.Async
 	public class GameTaskRunner
 	{
 		/// <summary>
+		/// Information about a yielded task.
+		/// </summary>
+		private readonly struct YieldInfo
+		{
+			public readonly Action Action;
+			public readonly ExecutionContext? ExecutionContext;
+
+			public YieldInfo(Action action, ExecutionContext? executionContext)
+			{
+				Action = action;
+				ExecutionContext = executionContext;
+			}
+		}
+
+		/// <summary>
 		/// The current frame, from the runner's perspective.
 		/// </summary>
 		public long Frame => _frame;
@@ -35,20 +50,18 @@ namespace HalfMaid.Async
 		/// Future pending work, stored as a priority queue for efficient access,
 		/// keyed by the frame on which to perform it.
 		/// </summary>
-		private readonly PriorityQueue<(Action, ExecutionContext?), long> _yieldedContinuations = new PriorityQueue<(Action, ExecutionContext?), long>();
+		private readonly PriorityQueue<YieldInfo, long> _yieldedContinuations = new PriorityQueue<YieldInfo, long>();
 
-#if false
 		/// <summary>
 		/// A function that can cancel active tasks by generating an exception to
 		/// raise in them.
 		/// </summary>
-		private Func<Exception>? _canceller = null;
-#endif
+		internal Func<Exception>? Canceller = null;
 
 		/// <summary>
-		/// The currently-executing task, if any.
+		/// The currently-executing GameTask, if any.
 		/// </summary>
-		internal GameTask? InternalCurrent = null;
+		internal GameTask? CurrentGameTask = null;
 
 		/// <summary>
 		/// Enqueue work to perform on some future frame.
@@ -60,7 +73,7 @@ namespace HalfMaid.Async
 		{
 			lock (_yieldedContinuations)
 			{
-				_yieldedContinuations.Enqueue((action, context), _frame + frames);
+				_yieldedContinuations.Enqueue(new YieldInfo(action, context), _frame + frames);
 			}
 		}
 
@@ -142,20 +155,20 @@ namespace HalfMaid.Async
 		{
 			while (true)
 			{
-				(Action Action, ExecutionContext? ExecutionContext) continuation;
+				YieldInfo yieldInfo;
 				lock (_yieldedContinuations)
 				{
-					if (!_yieldedContinuations.TryDequeue(out continuation, out long frame)
+					if (!_yieldedContinuations.TryDequeue(out yieldInfo, out long frame)
 						&& _externalTasks.Count == 0)
 						break;
 					Interlocked.Exchange(ref _frame, frame);
 				}
 
-				if (continuation.ExecutionContext != null)
+				if (yieldInfo.ExecutionContext != null)
 				{
-					ExecutionContext.Run(continuation.ExecutionContext, ExecutionContextRunner, continuation.Action);
+					ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner, yieldInfo.Action);
 				}
-				else continuation.Action();
+				else yieldInfo.Action();
 			}
 		}
 
@@ -168,21 +181,21 @@ namespace HalfMaid.Async
 
 			while (true)
 			{
-				(Action Action, ExecutionContext? ExecutionContext) continuation;
+				YieldInfo yieldInfo;
 				lock (_yieldedContinuations)
 				{
-					if (!_yieldedContinuations.TryPeek(out continuation, out long frame)
+					if (!_yieldedContinuations.TryPeek(out yieldInfo, out long frame)
 						|| frame > currentFrame)
 						break;
 
 					_yieldedContinuations.Dequeue();
 				}
 
-				if (continuation.ExecutionContext != null)
+				if (yieldInfo.ExecutionContext != null)
 				{
-					ExecutionContext.Run(continuation.ExecutionContext, ExecutionContextRunner, continuation.Action);
+					ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner, yieldInfo.Action);
 				}
-				else continuation.Action();
+				else yieldInfo.Action();
 			}
 		}
 
@@ -218,12 +231,13 @@ namespace HalfMaid.Async
 				await task();
 				if (_externalTasks.TryRemove(awaitable, out bool _))
 					awaitable.Trigger();
+				else
+					throw new InvalidOperationException("External Task completed after the GameTask it was run inside was cancelled.");
 			});
 
 			return awaitable;
 		}
 
-#if false
 		/// <summary>
 		/// Sometimes, you need a way to shut down tasks cleanly.  This will cause
 		/// an exception to be thrown in each *current* GameTask, thus aborting it; and it
@@ -249,11 +263,10 @@ namespace HalfMaid.Async
 		/// Sometimes, you need a way to shut down tasks cleanly.  This will cause
 		/// an exception to be thrown in each *current* GameTask, thus aborting it; and it
 		/// will give you a way to catch and handle that exception as well when thrown
-		/// inside that task.  Note that this has no effect on any active *external* tasks;
-		/// if those exist, it is your responsibility to ensure that their Task is
-		/// aborted/cancelled.  (Any work to be performed by the GameTask after that
-		/// Task completes will be cancelled by this, but this has no effect on the Task
-		/// itself.)
+		/// inside that task.  Note if external tasks exist, it is your responsibility to
+		/// ensure that their Task is aborted/cancelled.  (Any work to be performed by
+		/// the GameTask after that Task completes will be cancelled by this, but the
+		/// external Task will cause this to hang until that Task completes.)
 		/// </summary>
 		/// <param name="createException">A function that can create the type of exception
 		/// you want to throw in every active task.  If null, a TaskCanceledException will
@@ -267,39 +280,53 @@ namespace HalfMaid.Async
 			Action<Action>? handleUncaughtExceptions = null)
 			where TException : Exception
 		{
-			_canceller = createException;
-			_externalTasks.Clear();
+			Canceller = createException;
+
 			try
 			{
 				while (true)
 				{
-					(Action Action, ExecutionContext? ExecutionContext) continuation;
-					lock (_yieldedContinuations)
+					// There's not a good way to do this.  If there are external tasks that
+					// are active, we have to wait until they're done before we can try to
+					// abort the GameTasks.
+					while (_externalTasks.Count != 0)
 					{
-						if (!_yieldedContinuations.TryDequeue(out continuation, out long frame))
-							break;
+						Thread.Sleep(50);
 					}
 
-					if (continuation.ExecutionContext != null)
+					// If there are any active GameTasks, raise exceptions in them.
+					// Once we've run out of GameTasks and the external tasks are all gone,
+					// we've finished cleaning up after ourselves and we're done.
+					while (true)
 					{
-						if (handleUncaughtExceptions != null)
+						YieldInfo yieldInfo;
+						lock (_yieldedContinuations)
 						{
-							ExecutionContext.Run(continuation.ExecutionContext, ExecutionContextRunner,
-								(Action)(() => handleUncaughtExceptions(continuation.Action)));
+							if (!_yieldedContinuations.TryDequeue(out yieldInfo, out long frame)
+								&& _externalTasks.Count == 0)
+								return;
 						}
-						else
+
+						if (yieldInfo.ExecutionContext != null)
 						{
-							ExecutionContext.Run(continuation.ExecutionContext, ExecutionContextRunner, continuation.Action);
+							if (handleUncaughtExceptions != null)
+							{
+								ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner,
+									(Action)(() => handleUncaughtExceptions(yieldInfo.Action)));
+							}
+							else
+							{
+								ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner, yieldInfo.Action);
+							}
 						}
+						else yieldInfo.Action();
 					}
-					else continuation.Action();
 				}
 			}
 			finally
 			{
-				_canceller = null;
+				Canceller = null;
 			}
 		}
-#endif
 	}
 }

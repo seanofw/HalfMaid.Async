@@ -19,5 +19,10 @@
 		/// Threw an exception and was aborted.
 		/// </summary>
 		Failed,
+
+		/// <summary>
+		/// Cancelled by a custom exception.
+		/// </summary>
+		Cancelled,
 	}
 }
