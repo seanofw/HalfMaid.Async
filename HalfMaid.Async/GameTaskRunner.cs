@@ -307,19 +307,25 @@ namespace HalfMaid.Async
 								return;
 						}
 
-						if (yieldInfo.ExecutionContext != null)
+						try
 						{
-							if (handleUncaughtExceptions != null)
+							if (yieldInfo.ExecutionContext != null)
 							{
-								ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner,
-									(Action)(() => handleUncaughtExceptions(yieldInfo.Action)));
+								if (handleUncaughtExceptions != null)
+								{
+									ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner,
+										(Action)(() => handleUncaughtExceptions(yieldInfo.Action)));
+								}
+								else
+								{
+									ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner, yieldInfo.Action);
+								}
 							}
-							else
-							{
-								ExecutionContext.Run(yieldInfo.ExecutionContext, ExecutionContextRunner, yieldInfo.Action);
-							}
+							else yieldInfo.Action();
 						}
-						else yieldInfo.Action();
+						catch (TException)
+						{
+						}
 					}
 				}
 			}

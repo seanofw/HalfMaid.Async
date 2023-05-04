@@ -372,6 +372,42 @@ public async GameTask DoSomething()
 ```
 Inside the body of the task passed to `RunTask()`, you may use any normal `Task` object.  When that `Task` completes, the outer `GameTask` will then continue on the next available frame of execution.  Each real `Task` will be executed on its own thread using the standard .NET thread pool.  While a `Task` is executing, the `GameTask` around it will be put to sleep and will not block the runner.
 
+### Bulk Cancellation
+
+The `GameTaskRunner` includes special logic for cancelling _all_ active GameTasks at the same time.  For example, you may need to do this when your game switches states (start screen --> main gameplay) and needs to use a completely different set of GameTasks in the new state.  Or you may need it when your game exits or when it saves to disk, to be able to stop all GameTasks at once.
+
+There are is a special API on `GameTaskRunner` for these needs:
+
+- `CancelAllTasks(createException, handleUncaughtExceptions)` - Raise an exception inside every active GameTask.  Both parameters are optional.
+
+By default, a `TaskCanceledException` will be raised.  You can instead pass a `Func<Exception>` to `CancelAllTasks()` as its first parameter; this method must construct an instance of an exception to be raised.  It will be invoked once per GameTask.
+
+Cancellation exceptions are normally discarded by `CancelAllTasks()` if they rise fully outside the task.  You can provide alternative handling by passing an `Action<Action>` to `CancelAllTasks()` as its second parameter.  Your `handleUncaughtExceptions` function should invoke the action given to it, wrapping it in appropriate exception handling.  For example:
+
+```cs
+runner.CancelAllTasks(() => new FooException(), MyExceptionHandler);
+
+...
+
+private void MyExceptionHandler(Action action)
+{
+	try
+	{
+		// Continue running the task.  A FooException() will be
+		// raised wherever it last paused.
+		action();
+	}
+	catch (FooException)
+	{
+		// Do something special here.
+	}
+}
+```
+
+If external `Task`s are active that were started by `runner.RunTask()`, `CancelAllTasks()` will wait for them to complete before cancelling the `GameTask`s that invoked them:  It cannot automatically cancel external `Task`s.  If you intend to cancel a `GameTask` that calls `runner.RunTask()`, you should provide a means to cancel that external task yourself, such as by triggering a `CancellationToken` before calling `runner.CancelAllTasks()`.
+
+Note that while there is support for `CancelAllTasks()`, there is presently no way to cancel a _single_ task:  It's all-or-nothing.
+
 ## APIs
 
 There are relatively few public APIs, as the library mostly relies on standard `async`/`await` mechanics to function.  But here are the ones that are exposed:
@@ -413,6 +449,7 @@ This class is thread-safe:  Any method or property below may be invoked from any
 - **Method `RunUntilAllTasksFinish()`** - This executes all remaining registered tasks in a tight loop until all `GameTask`s and external `Task`s have either finished successfully or thrown exceptions, and then it returns.  This should be used at the end of your program (or of the `GameTaskRunner`'s lifetime) to ensure that any `finally` or `using` statements within any active tasks are eventually properly completed.
 - **Method `RunNextFrame()`** - Run exactly one subsequent frame's worth of execution for any registered tasks.  As soon as all tasks have either completed or have invoked `Next()` or `Delay()` to wait for a subsequent frame, this method returns.
 - **Method `RunTask(Func<Task> task)`** - Allow a traditional I/O task to be executed and managed by the task runner.  The `Task` will be executed by the thread pool.
+- **Method `CancelAllTasks<TException>(Func<TException> createException, Action<Action>? handleUncaughtExceptions)`** - Cancel all active GameTasks by raising exceptions inside them.  You can provide an optional custom function to create the exceptions.  You can provide an optional custom handler for any uncaught exceptions.  If a creation function is not provided, this will create `TaskCanceledException`s on its own.
 
 ### AsyncGameObjectBase
 
@@ -429,7 +466,7 @@ This library was the result of two years of me banging with rocks on the C# `asy
 
 I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work plumbing the depths of C# `async`/`await`.  And old versions of .NET Reflector really helped to untangle what was going on inside the generated code.
 
-As implemented, this seems to cover every major use case I can think of, and I can't really think of features this might need that it doesn't already have.  It has no bugs that I know of, but if you find one, feel free to report one.
+As implemented, this seems to cover most major use cases I can think of.  It has no bugs that I know of, but if you find one, feel free to report one.  (Note that the fact that Visual Studio cannot report logical GameTask stack frames is not a bug:  It's a useful but missing feature.)
 
 Please feel free to use this library for any purpose you see fit, as per the terms of the [MIT Open-Source License](https://opensource.org/license/mit/).  (It's also a good case study for how to `async`/`await` can be made to do cooperative multitasking, which was nearly undocumented before I wrote this!)  I hope you find this useful, and it makes your code nicer and simpler!
 
