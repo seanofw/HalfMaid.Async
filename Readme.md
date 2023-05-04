@@ -10,6 +10,8 @@ This repository contains the HalfMaidGames Async library, which is designed to s
 
 Instead of using `switch`-statements or hacking `IEnumerable` generators for your state machines, you can use nice, clean `async`/`await`-based programming for each actor in your game, and it scales very well to complex use cases.
 
+Importantly, even though this uses `async`/`await`, all of your tasks will always run on a single thread:  This library carefully uses `async`/`await` to time-slice a single thread, just like you would write using `switch` statements or `IEnumerable` generators, but with much simpler code.  This does not use the thread pool, and it does not trigger work in other threads:  You are in total control of what gets run and where it gets run, the behavior you need for the update cycle in a game loop.
+
 ## Installation
 
 You can install the latest [HalfMaidGames.Async library]() as a Nuget package.
@@ -161,7 +163,7 @@ public void ExampleProgram()
 	}
 }
 ```
-In short, the only methods you really need to know on the runner are `StartImmediately()`, which starts running an `async` method, and `RunNextFrame()`, which runs anything that needs to run in the next frame.
+In short, the only methods you really need to know on the runner are `StartImmediately()`, which starts running an `async` method, and `RunNextFrame()`, which runs anything that needs to run for the next frame.
 
 ## Usage
 
