@@ -689,6 +689,8 @@ I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-a
 
 As implemented, this seems to cover most major use cases I can think of.  It has no bugs that I know of, but if you find one, feel free to report one.  (Note that the fact that Visual Studio cannot report logical GameTask stack frames is not a bug:  It's a useful but missing feature.)
 
-Please feel free to use this library for any purpose you see fit, as per the terms of the [MIT Open-Source License](https://opensource.org/license/mit/).  (It's also a good case study for how to `async`/`await` can be made to do cooperative multitasking, which was nearly undocumented before I wrote this!)  I hope you find this useful, and it makes your code nicer and simpler!
+Please feel free to use this library for any purpose you see fit, as per the terms of the [MIT Open-Source License](https://opensource.org/license/mit/).  (It's also a good case study for how to `async`/`await` can be made to do cooperative multitasking, which was nearly undocumented before I wrote this!)
+
+I hope you find this useful, and find that it makes your code nicer and simpler!
 
 -- Sean Werkema
