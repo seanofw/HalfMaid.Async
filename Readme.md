@@ -29,7 +29,12 @@ Licensed under the [MIT open-source license](https://opensource.org/license/mit/
 - [APIs](#apis)
 	- [GameTask](#gametask)
 	- [GameTask\<T\>](#gametaskt)
+	- [GameTaskRunner](#gametaskrunner)
 	- [AsyncGameObjectBase](#asyncgameobjectbase-1)
+	- [GameTaskYieldAwaitable](#gametaskyieldawaitable)
+	- [ExternalTaskAwaitable](#externaltaskawaitable)
+	- [GameTaskAwaiter](#gametaskawaiter)
+	- [GameTaskAwaiter\<T\>](#gametaskawaitert)
 - [FAQ](#faq)
 - [Contributors & Thanks](#contributors--thanks)
 
@@ -471,23 +476,47 @@ This is combined with its own builder type to keep heap overhead as low as possi
 
 `GameTask` may be safely copied and moved around, since it is only a reference to a class and some additional methods.
 
+Do not attempt to instantiate a `GameTask()` yourself:  `GameTask.Create()` should only be called by the C# compiler.
+
 - **Property `GameTaskStatus Status`**:  The current status of this task, either `InProgress`, `Success` (completed without an exception), or `Failed` (threw an exception).
 
-- **Method `Then(Func<GameTask> task)`**:  This can be used to schedule a `GameTask` to run after this one completes, somewhat like `Task.ContinueWith()` does.  Note that the prior task's status (success or failure) is *not* provided to the next task.
+- **Property `bool IsCompleted`**: True if this task has ended (via normal completion or an exception), false if it is still `InProgress`.  Required by the C# compiler.
 
-- **Property `IsCompleted`**: True if this task has ended (via normal completion or an exception), false if it is still `InProgress`.
+- **Property `GameTask Task`**: A reference to this same class.  Required by the C# compiler.
 
-- **Method `GetAwaiter()`**: Returns an awaiter-compatible object that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
+- **Property `Exception Exception`**: If an exception was thrown by this task, this is the exception.  May be `null`.
 
-This class also has certain public methods that are required to implement the `AsyncMethodBuilder` pattern.  Even though they are declared `public`, they should only be invoked by the C# compiler itself.
+- **Property `ExceptionDispatchInfo ExceptionDispatchInfo`**: If an exception was thrown by this task, this is its captured dispatch information, which allows it to be re-thrown with a correct stack trace.  May be `null`.
+
+- **Static method `Create()`**:  Creates a new `GameTask()`.  Do not call this; it will be called automatically by the C# compiler's generated code as necessary.
+
+- **Method `Start<TStateMachine>(ref TStateMachine)`**: Start the given state machine.  Required by the C# compiler.  Do not call this directly.
+
+- **Method `SetStateMachine(IAsyncStateMachine)`**: Switch state machines.  Required by the C# compiler, and deprecated.  Do not call this directly.
+
+- **Method `SetException(Exception)`**: Notify this task that an exception has been raised.  Required by the C# compiler.  Do not call this directly, or you _will_ break the task.
+
+- **Method `SetResult()`**: Notify this task that it has completed successfully.  Required by the C# compiler.  Do not call this directly, or you _will_ break the task.
+
+- **Method `AwaitOnCompleted<TWaiter, TStateMachine>(ref TWaiter, ref TStateMachine)`**: Tell the given task how to continue after a wait completes, which is to invoke the next phase of the given state machine.  Do not call this directly, or you _will_ break the task.
+
+- **Method `AwaitUnsafeOnCompleted<TWaiter, TStateMachine>(ref TWaiter, ref TStateMachine)`**: Tell the given task how to continue after a wait completes, which is to invoke the next phase of the given state machine.  This version can avoid switching environments, but is the currently same as `AwaitOnCompleted()`.  Do not call this directly, or you _will_ break the task.
+
+- **Method `GetAwaiter()`**: Returns a `GameTaskAwaiter` that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
+
+This class has many public methods that are required to implement the `AsyncMethodBuilder` pattern.  Even though they are declared `public`, they should only be invoked by the C# compiler itself.  As a general rule, don't touch any part of a `GameTask` other than its public properties.
 
 This class is _not_ thread-safe.
 
 ### GameTask\<T\>
 
-This is a similar `class` to `GameTask`, and most of the above description applies.  This inherits from `GameTask`.  It also has the following property:
+This is a similar `class` to `GameTask`, and most of the above description applies.  This inherits from `GameTask`.  It also has the following notable changes:
 
 - **Property `T Result`**: The result (return value) of this task after it has successfully completed.  Will be `default(T)` until the task successfully completes.
+
+- **Method `SetResult(T)`**: Notify this task that it has completed successfully and returned a `T`.  Required by the C# compiler.  Do not call this directly, or you _will_ break the task.
+
+- **Method `GetAwaiter()`**: Returns a `GameTaskAwaiter<T>` that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
 
 This class is _not_ thread-safe.
 
@@ -496,6 +525,8 @@ This class is _not_ thread-safe.
 This manages the active state of a group of tasks, and can run those tasks forward to a specific point in time, either one frame, several frames, or all frames.
 
 This class is _not_ thread-safe except where noted below.
+
+- **Constructor `GameTaskRunner()`** - Construct a new runner.  No parameters are required.
 
 - **Property `TaskCount`** - This returns a count of how many `InProgress` `GameTask`s are being tracked by the runner.  When this count reaches zero, all `GameTask`s have either completed successfully or thrown exceptions, and none have any remaining work.  This property is thread-safe, and may be queried by any thread at any time.  (Note, however, that it is point-in-time information, so it may change immediately after you read it!)
 
@@ -530,6 +561,55 @@ This is a convenience class.  You do not need to inherit from it, but doing so c
 - **Method `RunTask(Func<Task> task)`** - A simple proxy to `Runner.RunTask(task)`, this allows child classes to simply write `await RunTask(...)`.
 
 This class is nothing but proxies to `GameTaskRunner`, so it has the same thread-safety rules that the runner has.
+
+### GameTaskYieldAwaitable
+
+This is the `struct` type returned by `runner.Next()` and `runner.Delay()`.  It is an "awaitable" type, which is a pattern-based — not inheritance-based — concept.  It is `readonly`, and may be safely copied by value.  You generally do *not* need to interact with this directly, and it is only included here for completeness.
+
+- **Field `GameTaskRunner Runner`** - The runner that will continue this awaitable in a subsequent frame.
+
+- **Field `int FrameCount`** - The number of frames that should elapse before this awaitable should continue, `1` for a call to `Next()`, and identical to the value passed into `Delay(frames)`.
+
+- **Property `bool IsCompleted`** - Whether this awaitable has been continued.  Required by the C# compiler.  Always returns false.
+
+- **Method `GetAwaiter()`** - Returns this object.  Required by the C# compiler.
+
+- **Method `OnCompleted(continuation)`** - Registers work to be performed when this awaitable completes. Required by the C# compiler.
+
+- **Method `GetResult()`** - Called when the awaitable completes.  Required by the C# compiler.  May raise an exception if the awaitable failed to complete or was cancelled.
+
+### ExternalTaskAwaitable
+
+This is the `class` type returned by `runner.RunTask()`.  It is an "awaitable" type, which is a pattern-based — not inheritance-based — concept.  It is immutable.  You generally do *not* need to interact with this directly, and it is only included here for completeness.
+
+- **Field `GameTaskRunner Runner`** - The runner that will continue this awaitable in a subsequent frame.
+
+- **Property `bool IsCompleted`** - Whether this awaitable has been continued.  Required by the C# compiler.  Always returns false.
+
+- **Method `GetAwaiter()`** - Returns this object.  Required by the C# compiler.
+
+- **Method `OnCompleted(continuation)`** - Registers work to be performed when this awaitable completes. Required by the C# compiler.
+
+- **Method `GetResult()`** - Called when the awaitable completes.  Required by the C# compiler.
+
+### GameTaskAwaiter
+
+This `struct` is returned by `GameTask.GetAwaiter()` and is used to wait for the completion of the `GameTask`.  It is `readonly`.  It contains very little:
+
+- **Field `GameTask Task`**: A reference to the task to wait for.
+- **Property `bool IsCompleted`**: Whether the `GameTask` has completed or not. Required by the C# compiler.
+- **Constructor `GameTaskAwaiter(GameTask)`**: Construct a new awaiter for the given task.
+- **Method `GetResult()`**: Called automatically by the C# compiler's generated code to notify the awaiter that the `await` has completed.  Required by the C# compiler.  Do not call this directly.
+- **Method `OnCompleted(Action)`**: Called by the C# compiler's generated code to register a continuation to execute after the task completes.  Required by the C# compiler.  Do not call this directly.
+- **Method `UnsafeOnCompleted(Action)`**: Called by the C# compiler's generated code to register a continuation to execute after the task completes, in situations where the execution and synchronization contexts do not need to change.  Required by the C# compiler.  Do not call this directly.
+
+In short, you shouldn't invoke this directly, and you will probably never notice it exists.
+
+### GameTaskAwaiter<T>
+
+This is nearly identical to the `struct` above, but designed for a `GameTask<T>` instead.  It does not inherit from `GameTaskAwaiter` because `struct` types cannot inherit.
+
+As with `GameTaskAwaiter`, you shouldn't invoke this directly, and you will probably never notice it exists.
 
 
 ----------
@@ -677,17 +757,31 @@ This class is nothing but proxies to `GameTaskRunner`, so it has the same thread
 		```
 		In the above example, the `logicalStackTrace` will show which `async GameTask` methods were called en route to arrive at `DeepAsyncMethod()`.
 
+- **Which .NET is this compatible with?  Why are there versions for so many different .NET releases?**
+
+	Because each .NET release supports different functionality, and I use conditional compilation to support that added functionality where possible:
+
+	- .NET Core 2.x and 3.x, and .NET 5 use more-or-less the same build.  Separate versions are included because each platform optimizes the code slightly differently.
+
+	- .NET 6 provides a new `PriorityQueue<T,S>` class, which I use on the newer platforms where it exists.  (To support older .NET Core and .NET 5, this library contains its own hacked copy of that `PriorityQueue<T,S>` class.)  This build should be compatible with .NET 7 and .NET 8 as well.
+
+	- .NET Framework 4.x is _not_ supported and will not be supported, because even though it supports `async`/`await`, it does not include `AsyncMethodBuilder`, which is required for custom task types like `GameTask` to work.
+
+	- .NET Core 1.x is not supported and is too niche to support.  Consider upgrading to a newer .NET if you're on .NET Core 1.x.
+
 
 ----------
 
 
 ## Contributors & Thanks
 
-This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of [really poor documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-7.0/task-types#builder-type) on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out a way to make it work in April 2023.
+This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of [really poor documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-7.0/task-types#builder-type) on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out the core of how to get it to work in April 2023, with critical enhancements in May 2023.
 
-I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work plumbing the depths of C# `async`/`await`.  And old versions of .NET Reflector really helped to untangle what was going on inside the generated code.
+I am indebted to [Oleksii Nikiforov](https://nikiforovall.medium.com/awaitable-awaiter-pattern-and-logical-micro-threading-in-c-4327f91d5923) and to [Bartosz Sypytkowski](https://gist.github.com/Horusiath/401ed16563dd442980de681d384f25b9) and to [Matthew Thomas](https://www.matthewathomas.com/programming/2021/09/30/async-method-builders-are-hard.html) for their hard work plumbing the depths of C# `async`/`await`.  Old versions of .NET Reflector really helped to untangle what was going on inside the early `async`/`await` generated code too.
 
-As implemented, this seems to cover most major use cases I can think of.  It has no bugs that I know of, but if you find one, feel free to report one.  (Note that the fact that Visual Studio cannot report logical GameTask stack frames is not a bug:  It's a useful but missing feature.)
+I would also like to thank Microsoft as well for releasing the .NET code under an open-source license so it could be studied.  Without being able to read through `Task.cs` a few hundred times, I don't think I'd have been able to pull this off.
+
+As implemented, this seems to cover most major use cases I can think of.  It has no bugs that I know of, but if you find one, please feel free to report one.  (Note that the fact that Visual Studio cannot report logical GameTask stack frames is not a bug:  It's a useful but missing feature.)
 
 Please feel free to use this library for any purpose you see fit, as per the terms of the [MIT Open-Source License](https://opensource.org/license/mit/).  (It's also a good case study for how to `async`/`await` can be made to do cooperative multitasking, which was nearly undocumented before I wrote this!)
 

@@ -25,7 +25,7 @@ namespace System.Collections.Generic
     ///  that determines the dequeue order: elements with the lowest priority get dequeued first.
     /// </remarks>
     [DebuggerDisplay("Count = {Count}")]
-    public class PriorityQueue<TElement, TPriority>
+    internal class PriorityQueue<TElement, TPriority>
     {
         /// <summary>
         /// Represents an implicit heap-ordered complete d-ary tree, stored as an array.
