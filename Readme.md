@@ -45,11 +45,19 @@ Instead of using `switch`-statements or hacking `IEnumerable` generators for you
 
 Importantly, even though this uses `async`/`await`, all of your tasks will always run on a single thread:  This library carefully uses `async`/`await` to time-slice a single thread, just like you would write using `switch` statements or `IEnumerable` generators, but with much simpler code.  This does not use the thread pool, and it does not trigger work in other threads:  You are in total control of what gets run and where it gets run, the behavior you need for the update cycle in a game loop.
 
+
+----------
+
+
 ## Installation
 
 You can install the latest [HalfMaidGames.Async library]() as a Nuget package.
 
 The package is multi-targeted for .NET Core 2.1, .NET Core 3.1, .NET 5.0, and .NET 6.0+ to provide maximum backward compatibility.  .NET Framework 4.x and earlier and .NET Core 1.x are not supported.
+
+
+----------
+
 
 ## Example &amp; Rationale
 
