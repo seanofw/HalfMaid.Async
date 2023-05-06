@@ -26,7 +26,7 @@ Licensed under the [MIT open-source license](https://opensource.org/license/mit/
 	- [AsyncGameObjectBase](#asyncgameobjectbase)
 	- [External Tasks](#external-tasks)
 	- [Bulk Cancellation](#bulk-cancellation)
-	- [Empty Methods](#empty-methods-and-fast-results)
+	- [Empty Methods and Fast Results](#empty-methods-and-fast-results)
 - [APIs](#apis)
 	- [GameTask](#gametask)
 	- [GameTask\<T\>](#gametaskt)
