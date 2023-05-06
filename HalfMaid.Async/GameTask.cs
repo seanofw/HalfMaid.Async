@@ -33,17 +33,17 @@ namespace HalfMaid.Async
 		/// (finished without an exception) or "failed" (threw an exception before
 		/// finishing).
 		/// </summary>
-		public GameTaskStatus Status { get; private set; }
+		public GameTaskStatus Status { get; protected set; }
 
 		/// <summary>
 		/// If an exception was thrown by this task, this is the exception.
 		/// </summary>
-		public Exception? Exception { get; private set; }
+		public Exception? Exception { get; protected set; }
 
 		/// <summary>
 		/// The dispatch information from the exception thrown by this task.
 		/// </summary>
-		public ExceptionDispatchInfo? ExceptionDispatchInfo { get; private set; }
+		public ExceptionDispatchInfo? ExceptionDispatchInfo { get; protected set; }
 
 		/// <summary>
 		/// The captured execution context.  Assigned when the task is interrupted, and used
@@ -79,6 +79,13 @@ namespace HalfMaid.Async
 			task.ExecutionContext = ExecutionContext.Capture();
 			return task;
 		}
+
+		/// <summary>
+		/// Create a GameTask that is already completed and yields no result.
+		/// </summary>
+		/// <returns></returns>
+		public static GameTask Complete()
+			=> new GameTask { Status = GameTaskStatus.Success };
 
 		/// <summary>
 		/// Start the state machine of the task at its beginning.  Does nothing
@@ -285,6 +292,13 @@ namespace HalfMaid.Async
 		public T Result { get; private set; } = default!;
 
 		/// <summary>
+		/// A "completed" GameTask, which is set to always having been finished successfully.
+		/// There's no such thing on GameTask{T}.
+		/// </summary>
+		public static new GameTask Complete()
+			=> throw new InvalidOperationException("GameTask<T> does not have a Complete method; use .FromResult<T>() instead.");
+
+		/// <summary>
 		/// Construct an instance of the GameTask, which is also its own builder.  This
 		/// is required by the C# compiler.  It cannot be inlined because otherwise
 		/// ExecutionContext.Capture() might return the wrong context.
@@ -292,6 +306,18 @@ namespace HalfMaid.Async
 		/// <returns>The new GameTaskBuilder instance.</returns>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public new static GameTask<T> Create() => new GameTask<T>();
+
+		/// <summary>
+		/// Create a new task that is the result of an already-completed operation.
+		/// </summary>
+		/// <param name="result">The result to return to the caller.</param>
+		/// <returns>The new task that contains the given result.</returns>
+		public static GameTask<T> FromResult(T result)
+			=> new GameTask<T>
+			{
+				Result = result,
+				Status = GameTaskStatus.Success,
+			};
 
 		/// <summary>
 		/// Notify the builder that the task has completed successfully.  This is required

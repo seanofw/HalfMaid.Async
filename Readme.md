@@ -26,6 +26,7 @@ Licensed under the [MIT open-source license](https://opensource.org/license/mit/
 	- [AsyncGameObjectBase](#asyncgameobjectbase)
 	- [External Tasks](#external-tasks)
 	- [Bulk Cancellation](#bulk-cancellation)
+	- [Empty Methods](#empty-methods-and-fast-results)
 - [APIs](#apis)
 	- [GameTask](#gametask)
 	- [GameTask\<T\>](#gametaskt)
@@ -460,6 +461,46 @@ If external `Task`s are active that were started by `runner.RunTask()`, `CancelA
 
 Note that while there is support for `CancelAllTasks()`, there is presently no way to cancel a _single_ task:  It's all-or-nothing.
 
+### Empty Methods and Fast Results
+
+Just as with `Task`, it can be beneficial sometimes to create a "finished" `GameTask`.  For example, you may have a base class that declares this:
+
+```cs
+public abstract GameTask<int> Calculate();
+```
+
+You need to implement that method in your child class, since it's required, but what do you do if you already have the result?  You could use `async`:
+
+```cs
+// Compiler complains that you never use await!
+public override async GameTask<int> Calculate()
+{
+	return 0;
+}
+```
+
+But the compiler is right to complain here:  You have the cost of setting up the `async` state machine, and then you never use it.  Both `GameTask` classes include methods that you can use to avoid this overhead, that are suitable for tasks that have already finished:
+
+```cs
+public override GameTask<int> Calculate()
+{
+	return GameTask<int>.FromResult(0);
+}
+```
+
+The syntax matches that of `Task<int>.FromResult()` by design, and it fits similar use cases.
+
+There is also a `GameTask.Completed()` which returns, as its name implies, a completed `GameTask`:
+
+```cs
+public override GameTask MainAsync()
+{
+	return GameTask.Completed();
+}
+```
+
+Prefer these patterns in situations where the method must return `GameTask` or `GameTask<T>` but where you don't need to `await` for a future frame or for an action to complete.
+
 
 ----------
 
@@ -490,6 +531,8 @@ Do not attempt to instantiate a `GameTask()` yourself:  `GameTask.Create()` shou
 
 - **Static method `Create()`**:  Creates a new `GameTask()`.  Do not call this; it will be called automatically by the C# compiler's generated code as necessary.
 
+- **Static method `Completed()`**: Creates a `GameTask` that has already completed.  Useful for returning immediately from a method that must return a `GameTask` but where you don't want to declare it `async` because there's no work to do, or the work is fast and synchronous.
+
 - **Method `Start<TStateMachine>(ref TStateMachine)`**: Start the given state machine.  Required by the C# compiler.  Do not call this directly.
 
 - **Method `SetStateMachine(IAsyncStateMachine)`**: Switch state machines.  Required by the C# compiler, and deprecated.  Do not call this directly.
@@ -513,6 +556,8 @@ This class is _not_ thread-safe.
 This is a similar `class` to `GameTask`, and most of the above description applies.  This inherits from `GameTask`.  It also has the following notable changes:
 
 - **Property `T Result`**: The result (return value) of this task after it has successfully completed.  Will be `default(T)` until the task successfully completes.
+
+- **Static method `FromResult(T)`**: Creates a `GameTask<T>` that has already completed with the given value.  Useful for returning immediately from a method that must return a `GameTask<T>` but where you don't want to declare it `async` because there's no work to do, or the work is fast and synchronous.
 
 - **Method `SetResult(T)`**: Notify this task that it has completed successfully and returned a `T`.  Required by the C# compiler.  Do not call this directly, or you _will_ break the task.
 
