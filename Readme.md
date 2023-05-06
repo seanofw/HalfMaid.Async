@@ -4,6 +4,39 @@ Copyright &copy; 2023 by Sean Werkema
 
 Licensed under the [MIT open-source license](https://opensource.org/license/mit/)
 
+
+----------
+
+
+## Contents
+
+- [Overview](#overview)
+- [Installation](#installation)
+- [Example &amp; Rationale](#example--rationale)
+	- [The Problem](#the-problem)
+	- [The Ideal](#the-ideal)
+	- [The Solution](#the-solution)
+	- [Running It](#running-it)
+- [Usage](#usage)
+	- [GameTasks](#gametasks)
+		- [Detailed Samples](#detailed-samples)
+		- [Complete Example](#complete-example)
+	- [Starting GameTasks](#starting-gametasks)
+	- [Main Loop](#main-loop)
+	- [AsyncGameObjectBase](#asyncgameobjectbase)
+	- [External Tasks](#external-tasks)
+	- [Bulk Cancellation](#bulk-cancellation)
+- [APIs](#apis)
+	- [GameTask](#gametask)
+	- [GameTask\<T\>](#gametaskt)
+	- [AsyncGameObjectBase](#asyncgameobjectbase-1)
+- [FAQ](#faq)
+- [Contributors & Thanks](#contributors--thanks)
+
+
+----------
+
+
 ## Overview
 
 This repository contains the HalfMaidGames Async library, which is designed to solve a common problem in video-game programming in C#:  The difficulty of building video-game state machines.
@@ -164,6 +197,10 @@ public void ExampleProgram()
 }
 ```
 In short, the only methods you really need to know on the runner are `StartImmediately()`, which starts running an `async` method, and `RunNextFrame()`, which runs anything that needs to run for the next frame.
+
+
+----------
+
 
 ## Usage
 
@@ -410,6 +447,10 @@ If external `Task`s are active that were started by `runner.RunTask()`, `CancelA
 
 Note that while there is support for `CancelAllTasks()`, there is presently no way to cancel a _single_ task:  It's all-or-nothing.
 
+
+----------
+
+
 ## APIs
 
 There are relatively few public APIs, as the library mostly relies on standard `async`/`await` mechanics to function.  But here are the ones that are exposed:
@@ -423,34 +464,49 @@ This is combined with its own builder type to keep heap overhead as low as possi
 `GameTask` may be safely copied and moved around, since it is only a reference to a class and some additional methods.
 
 - **Property `GameTaskStatus Status`**:  The current status of this task, either `InProgress`, `Success` (completed without an exception), or `Failed` (threw an exception).
+
 - **Method `Then(Func<GameTask> task)`**:  This can be used to schedule a `GameTask` to run after this one completes, somewhat like `Task.ContinueWith()` does.  Note that the prior task's status (success or failure) is *not* provided to the next task.
+
 - **Property `IsCompleted`**: True if this task has ended (via normal completion or an exception), false if it is still `InProgress`.
+
 - **Method `GetAwaiter()`**: Returns an awaiter-compatible object that can be used by `await` to trigger any continued computation in this task.  You generally do not need to call this.
 
 This class also has certain public methods that are required to implement the `AsyncMethodBuilder` pattern.  Even though they are declared `public`, they should only be invoked by the C# compiler itself.
 
-### GameTask<T>
+This class is _not_ thread-safe.
+
+### GameTask\<T\>
 
 This is a similar `class` to `GameTask`, and most of the above description applies.  This inherits from `GameTask`.  It also has the following property:
 
 - **Property `T Result`**: The result (return value) of this task after it has successfully completed.  Will be `default(T)` until the task successfully completes.
 
+This class is _not_ thread-safe.
+
 ### GameTaskRunner
 
 This manages the active state of a group of tasks, and can run those tasks forward to a specific point in time, either one frame, several frames, or all frames.
 
-This class is thread-safe:  Any method or property below may be invoked from any thread.  Generally, only one thread should be the caller of `RunNextFrame()` or `RunUntilAllTasksFinish()`, though.
+This class is _not_ thread-safe except where noted below.
 
-- **Property `TaskCount`** - This returns a count of how many `InProgress` `GameTask`s are being tracked by the runner.  When this count reaches zero, all `GameTask`s have either completed successfully or thrown exceptions, and none have any remaining work.
-- **Method `EnqueueFuture(Action action, int frames)`** - Enqueue an action to occur at some point in the future (the current time plus the given number of frames).  This overload takes a simple method as the action to perform.
-- **Method `EnqueueFuture(Func<GameTask> action, int frames)`** - Enqueue an action to occur at some point in the future (the current time plus the given number of frames).  This overload takes a `Func<GameTask>`, i.e., an `async GameTask` method, which will be started the given number of frames in the future.
+- **Property `TaskCount`** - This returns a count of how many `InProgress` `GameTask`s are being tracked by the runner.  When this count reaches zero, all `GameTask`s have either completed successfully or thrown exceptions, and none have any remaining work.  This property is thread-safe, and may be queried by any thread at any time.  (Note, however, that it is point-in-time information, so it may change immediately after you read it!)
+
+- **Method `EnqueueFuture(Action action, int frames)`** - Enqueue an action to occur at some point in the future (the current time plus the given number of frames), during `RunNextFrame()`.  This call is thread-safe, and is a way for an external thread to push work onto the runner's thread.
+
 - **Method `Next()`** - This returns an awaitable that resolves during the next frame of execution.  It should always be called as `await Next()`.  It is conceptually similar to `await Task.Yield()`.
+
 - **Method `Delay(int frames)`** - This returns an awaitable that resolves in a future frame of execution.  It should always be called as `await Delay(frames)`.  It is conceptually similar to `await Task.Delay(msec)`.
+
 - **Method `StartImmediately(Func<GameTask> action)`** - This causes the given action to be started (run/called/invoked) immediately; if it encounters an `await` during its execution that would cause it to block, its continuation will be registered with the runner, and then this call will return.  This is conceptually similar to `Task.Run(action)`.
-- **Method `StartYielded(Func<GameTask> action)`** - This causes the given action to be started (run/called/invoked) during the next frame, and returns immediately.  This is conceptually similar to a pattern like `Task.Run(async () => { await Task.Yield(); await action(); })`.
+
+- **Method `StartYielded(Func<GameTask> action)`** - This causes the given action to be started (run/called/invoked) during the next frame, and returns immediately.  This is conceptually similar to a pattern like `Task.Run(async () => { await Task.Yield(); await action(); })`. This method is thread-safe, and is a way for an external thread to push work onto the runner's thread.
+
 - **Method `RunUntilAllTasksFinish()`** - This executes all remaining registered tasks in a tight loop until all `GameTask`s and external `Task`s have either finished successfully or thrown exceptions, and then it returns.  This should be used at the end of your program (or of the `GameTaskRunner`'s lifetime) to ensure that any `finally` or `using` statements within any active tasks are eventually properly completed.
+
 - **Method `RunNextFrame()`** - Run exactly one subsequent frame's worth of execution for any registered tasks.  As soon as all tasks have either completed or have invoked `Next()` or `Delay()` to wait for a subsequent frame, this method returns.
-- **Method `RunTask(Func<Task> task)`** - Allow a traditional I/O task to be executed and managed by the task runner.  The `Task` will be executed by the thread pool.
+
+- **Method `RunTask(Func<Task> task)`** - Allow a traditional I/O task to be executed and managed by the task runner.  The `Task` will be executed by the thread pool, but will be resumed on the original thread.
+
 - **Method `CancelAllTasks<TException>(Func<TException> createException, Action<Action>? handleUncaughtExceptions)`** - Cancel all active GameTasks by raising exceptions inside them.  You can provide an optional custom function to create the exceptions.  You can provide an optional custom handler for any uncaught exceptions.  If a creation function is not provided, this will create `TaskCanceledException`s on its own.
 
 ### AsyncGameObjectBase
@@ -458,11 +514,166 @@ This class is thread-safe:  Any method or property below may be invoked from any
 This is a convenience class.  You do not need to inherit from it, but doing so can simplify calling methods like `GameTaskRunner.Next()` in your own code.
 
 - **Static property `GameTaskRunner Runner`** - The runner that will be used by this object.  This is initialized by default to `new GameTaskRunner()`.
+
 - **Method `Next()`** - A simple proxy to `Runner.Next()`, this allows child classes to simply write `await Next()`.
+
 - **Method `Delay(int frames)`** - A simple proxy to `Runner.Delay(frames)`, this allows child classes to simply write `await Delay(frames)`.
+
 - **Method `RunTask(Func<Task> task)`** - A simple proxy to `Runner.RunTask(task)`, this allows child classes to simply write `await RunTask(...)`.
 
-## Contributors &amp; Thanks
+This class is nothing but proxies to `GameTaskRunner`, so it has the same thread-safety rules that the runner has.
+
+
+----------
+
+
+## FAQ
+
+- **What's the difference between `Task` and `GameTask`?**
+
+	The standard `Task` object is designed around the thread pool:  It's intended to be a lot like threading, but easier, and with better performance.  `Task` generally uses the C# `ThreadPool` for scheduling, and will use it for any situation when it needs to execute something and doesn't know where else to put it.
+
+	`GameTask` is similar in some ways, but is designed not just to fit the resource constraints of a video game, but to embody a very different concept, that of time-slicing a *single* thread.  In a video game, you need to be certain of what will and won't execute during the current frame.  You need to know that X object will run a certain chunk of code _in the current thread_ and then _stop_ and then wait to be told to continue in the next frame.
+	
+	This library is designed to make that kind of predictable time-slicing easy, but still using object-oriented programming and functional-programming, and not switching to alternative programming models like [ECS](https://en.wikipedia.org/wiki/Entity_component_system).
+
+- **Can I call child methods within an `async GameTask` method?**
+
+	Sure!  That's part of the point, and part of why using `async`/`await` is better than using `switch`-based state machines:  You can call deeper and deeper, and organize your code using normal software-engineering principles.
+	
+	So just like with `Task`-based async, the child methods must be declared `async GameTask` too if they need to invoke `runner.Next()` or `runner.Delay()` or `runner.RunTask()`, and you'll also need to `await` them.
+	
+	Of course, if they *don't* need to wait for a frame or a result, you can just call them directly.
+
+- **What about memory overhead?  How expensive is a `GameTask`?**
+
+	A `GameTask` is not substantially more expensive than an `IEnumerable`/`yield` pattern.  Each `async` method has two objects on the heap to represent it:  The first is a state machine (`IAsyncStateMachine`) which stores both its code state (i.e., an integer representing which code to run next) and its data state (its local variables).  The second object is a `GameTask`, which provides sufficient information to pause and resume the .NET runtime from a paused `await` in the state machine.  A `GameTask` contains about 5 to 6 pointers' worth of data (~24 bytes on a 32-bit CPU, ~48 bytes on a 64-bit CPU).
+
+	If you were to hand-implement the state machine using a `switch` statement, you would likely have an equivalent of the first object to represent both the code and data state, and no equivalent of the second object.
+
+	Either way, a `GameTask` is not hugely expensive:  It is a single extra object, measured in bytes, not kilobytes.  It is allocated the first time a method is entered, and garbage-collected when the method completes, and exists for the full lifetime in between.  No matter how many `await` invocations the method contains, the same `GameTask` is used for the full dynamic extent of the method.
+
+- **What about CPU overhead?  How slow is `async`/`await`?**
+
+	The `async`/`await` mechanics will likely be slower than a hand-implemented `switch` statement, which will likely be slower than a bulk-update system like ECS.  Pausing and resuming a method is not free.
+
+	_However_, that overhead is still measured in nanoseconds:  You can have tens if not hundreds of thousands of `GameTask`s updating in a single frame and still meet 60 FPS.
+	
+	Moreover, because `RunNextFrame()` uses an internal priority-queue-based scheduler, any `GameTask` that is waiting on `runner.Delay()` or `runner.RunTask()` will have *zero* cost until that `GameTask` finally resumes.  You can have hundreds of thousands of "sleeping" objects, and if only one wakes up per frame, you pay little more CPU than the cost of its execution.
+
+- **Do exceptions work inside an `async GameTask`?**
+
+	Exceptions are fully supported:  If exceptions get raised, you `try`/`catch`/`finally` them just like you would anywhere else in your code, and an outer `try`/`catch`/`finally` can catch exceptions from deep inside an `async`/`await` call stack.
+
+	The stack trace of the exception will show the full _logical_ call stack to get to where it was thrown:  Even if it was thrown many frames after the outermost `async` method was invoked, the outermost `async` method will still appear in the stack trace.
+
+- **Does `using` work inside an `async GameTask`?**
+
+	Just like exceptions, this works like you think it should.  A `using` with an `await` in the middle will invoke `Dispose()` when the method finally completes, even if that's many frames in the future.
+
+- **Do I need to inherit my objects from `AsyncGameObjectBase`?**
+
+	No!  You can have your own inheritance hierarchies.  I include this for convenience, not because it's required.  The entire source code (minus comments) for `AsyncGameObjectBaase` is presented below to show you how simple it is and how easy it is to choose to use it or not use it:
+
+	```cs
+	public abstract class AsyncGameObjectBase
+	{
+		public static GameTaskRunner Runner { get; set; } = new GameTaskRunner();
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		protected AsyncGameObjectBase()
+		{
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public GameTaskYieldAwaitable Next() => Runner.Next();
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public GameTaskYieldAwaitable Delay(int frames) => Runner.Delay(frames);
+
+		public ExternalTaskAwaitable RunTask(Func<Task> task) => Runner.RunTask(task);
+	}
+	```
+
+	As you can see, there's very little to it, and it does nothing more than forward calls to the `GameTaskRunner` class.  You can copy-and-paste the above methods into your own base class if you have a custom inheritance hierarchy but still want the convenience of being able to simply write `await Next();` in your code.
+
+- **Can I have more than one `GameTaskRunner`?  Is anything `static`?**
+
+	You can have as many `GameTaskRunner` instances as you want; each will run the `async GameTask` methods started inside it.  Nothing is declared `static` in the entire library except for a `static` runner instance in the `AsyncGameObjectBase` class, which is only included to make simple use cases easy:  You are not required to use it.
+	
+	It may even be useful in some cases to have multiple `GameTaskRunner` instances:  For example, one to manage enemies in the main gameplay, and another to manage actions in, say, a popup menu only while it's open.
+
+	It's up to you to decide how many or how few runners you need.
+
+- **What about thread safety?**
+
+	`GameTask` and `GameTaskRunner` are not thread-safe.  Some parts of `GameTaskRunner` are, but not all of it is.  You should only ever use a `GameTask` or `GameTaskRunner` in the thread that created it, with three notable exceptions to this rule:
+
+	- `runner.StartYielded(...gameTask...)` can be safely called by other threads to start a `GameTask` on the runner's thread.
+
+	- `runner.TaskCount` can safely be queried from any thread.
+
+	- `await runner.RunTask(...task...)` will kick off the given `Task` on the thread pool:  That `Task` will run in parallel to the thread that started it, possibly on another CPU core.  However, when the `await` completes, it will resume back on the original calling thread during `RunNextFrame()`.
+
+	Do not assume any other methods on `GameTaskRunner` are thread-safe.
+
+- **How do I safely clean up after `async GameTask`s?**
+
+	You need to make sure that you clean up your tasks when you're done with running them, or `try`/`catch`/`finally` and `using` and `runner.RunTask()` may not work correctly inside them.
+	
+	"Done" in this context means that you're not going to use this `GameTaskRunner` anymore, either because you've made a major transition in your code (i.e., main menu --> gameplay) where the previous tasks don't matter anymore, or because you're exiting the game.  It's up to you to decide when "done" happens.
+
+	When you're done with a runner and all of the `GameTask`s inside it, call `runner.RunUntilAllTasksFinish()`.  This will ensure that every task has fully completed before it returns, and it will block until no more tasks remain.
+
+	This is also why `runner.CancelAllTasks()` exists:  It lets you throw an exception inside each task, which can be used to shut them down more cleanly than simply dropping them on the floor.  Make sure to `catch` in your `GameTask` code whatever exception you raise, though, if you want your task to know it's being killed!
+
+	Typically, you'll want to use a pattern like this to shut everything down cleanly:
+
+	```cs
+	public void ExitMyGame()
+	{
+		runner.CancelAllTasks();
+		runner.RunUntilAllTasksFinish();
+	}
+	```
+
+	The first call will attempt to exit every task reasonably cleanly, and the second call won't continue until everything definitely *has* exited.
+
+	The `GameTaskRunner` does not implement `IDisposable`; if you want `Dispose()`-like behavior, you can implement it yourself by calling those two methods as shown above.
+
+	If you don't *care* that `try`/`catch`/`finally` and `using` and `runner.RunTask()` may not finish inside your `GameTask`s, you *can* always skip the `RunUntilAllTasksFinish()` step, and just let GC collect both the runner and the `GameTask`s when it wants to, but that often requires care not to use those language features.
+
+- **What about debugging?**
+
+	When debugging C# code that uses `async GameTask`, there are a few important points to be aware of:
+
+	- Stepping over an `await` may produce weird results, because you may not reach the other side of it until many frames later.  It is better to set a breakpoint below it than to try to step over it in a debugger.
+
+	- The debugger call stack will typically show the *real* call stack and will be very shallow, only showing the currently-executing innermost state machine:  `GameLoop()` --> `runner.RunNextFrame()` --> `DeepAsyncMethod()`.  In the future, I may try for better debugger integration, but for now, don't be surprised by the debugger's call stack being unhelpful.
+
+	- To find out the *logical* call stack, you can throw an exception and immediately catch it:
+
+		```cs
+		private async GameTask DeepAsyncMethod()
+		{
+			...
+			await runner.Next();
+			...
+			try { throw Exception(); }
+			catch (Exception e)
+			{
+				// Set a breakpoint on the line below.
+				string logicalStackTrace = e.StackTrace;
+			}
+		}
+		```
+		In the above example, the `logicalStackTrace` will show which `async GameTask` methods were called en route to arrive at `DeepAsyncMethod()`.
+
+
+----------
+
+
+## Contributors & Thanks
 
 This library was the result of two years of me banging with rocks on the C# `async`/`await` model to make it do something it wasn't really meant to do, in the face of [really poor documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/proposals/csharp-7.0/task-types#builder-type) on how it actually works from Microsoft.  I tried to do this at least a dozen times before I finally figured out a way to make it work in April 2023.
 

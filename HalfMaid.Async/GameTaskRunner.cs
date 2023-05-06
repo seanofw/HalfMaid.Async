@@ -67,6 +67,17 @@ namespace HalfMaid.Async
 		/// Enqueue work to perform on some future frame.
 		/// </summary>
 		/// <param name="action">The action to enqueue.</param>
+		/// <param name="frames">How far in the future to perform it.</param>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public void EnqueueFuture(Action action, int frames = 1)
+		{
+			EnqueueFuture(action, ExecutionContext.Capture(), frames);
+		}
+
+		/// <summary>
+		/// Enqueue work to perform on some future frame.
+		/// </summary>
+		/// <param name="action">The action to enqueue.</param>
 		/// <param name="context">The execution context in which to perform this future work.</param>
 		/// <param name="frames">How far in the future to perform it.</param>
 		internal void EnqueueFuture(Action action, ExecutionContext? context, int frames)
