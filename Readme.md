@@ -45,7 +45,7 @@ Licensed under the [MIT open-source license](https://opensource.org/license/mit/
 
 ## Overview
 
-This repository contains the HalfMaidGames Async library, which is designed to solve a common problem in video-game programming in C#:  The difficulty of building video-game state machines.
+This repository contains the [HalfMaidGames](https://www.halfmaid.games) Async library, which is designed to solve a common problem in video-game programming in C#:  The difficulty of building video-game state machines.
 
 Instead of using `switch`-statements or hacking `IEnumerable` generators for your state machines, you can use nice, clean `async`/`await`-based programming for each actor in your game, and it scales very well to complex use cases.
 

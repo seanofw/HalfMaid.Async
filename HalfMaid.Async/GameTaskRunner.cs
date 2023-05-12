@@ -96,7 +96,7 @@ namespace HalfMaid.Async
 		/// <param name="frames">How far in the future to perform it.</param>
 		private void EnqueueFuture(Func<GameTask> action, ExecutionContext? context, int frames)
 		{
-			EnqueueFuture(() => action(), context, frames);
+			EnqueueFuture(() => { action(); }, context, frames);
 		}
 
 		/// <summary>
